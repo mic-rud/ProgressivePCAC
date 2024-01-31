@@ -33,15 +33,23 @@ class FactorizedPrior(CompressionModel):
 
             # Extract layers
             extract = nn.Sequential(
-                #ME.MinkowskiConvolution(self.C_bottleneck, self.C_bottleneck, kernel_size=1, dimension=3),
                 ME.MinkowskiConvolution(self.C, self.C, kernel_size=1, dimension=3),
                 ME.MinkowskiReLU(inplace=False),
-                #ME.MinkowskiConvolution(self.C_bottleneck, self.C_bottleneck, kernel_size=3, dimension=3),
                 ME.MinkowskiConvolution(self.C, self.C, kernel_size=3, dimension=3),
                 ME.MinkowskiReLU(inplace=False),
-                #ME.MinkowskiConvolution(self.C_bottleneck, self.C_bottleneck, kernel_size=1, dimension=3)
-                ME.MinkowskiConvolution(self.C, self.C_bottleneck, kernel_size=1, dimension=3)
+                ME.MinkowskiConvolution(self.C, self.C_bottleneck, kernel_size=1, dimension=3),
             ) 
+            """
+            extract = nn.Sequential(
+                ME.MinkowskiChannelwiseConvolution(self.C, kernel_size=3, dimension=3),
+                ME.MinkowskiTanh(),
+                #ME.MinkowskiReLU(inplace=False),
+                ME.MinkowskiChannelwiseConvolution(self.C, kernel_size=3, dimension=3),
+                ME.MinkowskiTanh(),
+                #ME.MinkowskiReLU(inplace=False),
+                ME.MinkowskiChannelwiseConvolution(self.C, kernel_size=3, dimension=3)
+            ) 
+            """
             self.extracts.append(extract)
             self.add_module(f'extract_{i}',extract)
 
@@ -52,6 +60,21 @@ class FactorizedPrior(CompressionModel):
                 ME.MinkowskiReLU(inplace=False),
                 ME.MinkowskiConvolution(self.C, self.C, kernel_size=1, dimension=3)
             )
+            """
+            expand = nn.Sequential(
+                #ME.MinkowskiChannelwiseConvolution(self.C_bottleneck, self.C, kernel_size=3, dimension=3),
+                ME.MinkowskiChannelwiseConvolution(self.C, kernel_size=3, dimension=3),
+                #ME.MinkowskiReLU(inplace=False),
+                ME.MinkowskiTanh(),
+                #ME.MinkowskiChannelwiseConvolution(self.C, self.C, kernel_size=3, dimension=3),
+                ME.MinkowskiChannelwiseConvolution(self.C, kernel_size=3, dimension=3),
+                #ME.MinkowskiReLU(inplace=False),
+                ME.MinkowskiTanh(),
+                #ME.MinkowskiChannelwiseConvolution(self.C, self.C, kernel_size=3, dimension=3)
+                ME.MinkowskiChannelwiseConvolution(self.C, kernel_size=3, dimension=3)
+            )
+            """
+
             self.expands.append(expand)
             self.add_module(f'expand_{i}',expand)
 
@@ -65,14 +88,7 @@ class FactorizedPrior(CompressionModel):
                                  features=y.F.clone(), 
                                  device=y.device, 
                                  tensor_stride=8)
-        ys = torch.split(y.F, int(self.C / self.num_bottlenecks), dim=1)
         for i in range(self.num_bottlenecks):
-            """
-            y_base = ME.SparseTensor(coordinates=y.C, 
-                                 features=ys[i], 
-                                 device=y.device, 
-                                 tensor_stride=8)
-            """
             # Extract residual
             r_i = self.extracts[i](y_base)
 
@@ -82,10 +98,8 @@ class FactorizedPrior(CompressionModel):
                                     features=r_hat[0].t(),
                                     device=y.device,
                                     tensor_stride=8)
-            y_likelihoods.append(likelihood)
 
             # Expand
-
             r_i_hat = self.expands[i](r_hat)
 
             # Sum over residuals
@@ -101,15 +115,19 @@ class FactorizedPrior(CompressionModel):
                                     tensor_stride=8)
             y_hats.append(y_hat)
 
+            y_likelihoods.append(likelihood)
+
             # Rounded residual 
             with torch.no_grad():
-                r_round, _ = self.entropy_bottlenecks[i](r_i.F.t().unsqueeze(0), training=False)
+                r_round, likelihoods_round = self.entropy_bottlenecks[i](r_i.F.t().unsqueeze(0), training=False)
                 r_round = ME.SparseTensor(coordinates=r_i.C,
                                           features=r_round[0].t(),
                                           tensor_stride=8)
                 r_i_round = self.expands[i](r_round)
                 residuals.append(r_i_round)
-            
+
+                #y_likelihoods_round.append(likelihoods_round)
+
                 # Subtract from y_base
                 y_base = ME.SparseTensor(coordinates=y_base.C,
                                         features=y_base.F - r_i_round.F,
@@ -176,7 +194,18 @@ class FactorizedPrior(CompressionModel):
                                      features=y_base.F - r_i_hat.features_at_coordinates(y_base.C.float()),
                                      tensor_stride=8,
                                      device=y_base.device)
-
+            # Render a pc
+            import open3d as o3d
+            import numpy as np
+            coordinates = y_base.C.cpu().numpy()
+            features = y_base.F.cpu().numpy()
+            for i in range(features.shape[1]):
+                point_cloud = o3d.geometry.PointCloud()
+                point_cloud.points = o3d.utility.Vector3dVector(coordinates[:, 1:] / 8)
+                color_value = features[:, i:i+1]
+                color_value = (color_value - np.min(color_value)) / (np.max(color_value) - np.min(color_value))
+                point_cloud.colors = o3d.utility.Vector3dVector(np.concatenate([color_value, color_value, color_value], axis=1))
+                utils.render_pointcloud(point_cloud, "temp/image_{}_{}.png".format(i, "{}"))
 
         strings = [y_strings]
         shapes = [shape]
@@ -201,6 +230,7 @@ class FactorizedPrior(CompressionModel):
             Sparse Tensor of the decompressed representation
         
         """
+        points = points[0]
         assert isinstance(strings, list) and len(strings) == 1
         points = utils.sort_points(points)
         # Get the points back
@@ -219,6 +249,260 @@ class FactorizedPrior(CompressionModel):
             r_hat = self.expands[i](r_hat)
 
             residuals.append(r_hat.F.clone())
+
+        y_hat_feats = residuals[-1]
+        for res in residuals[:-1]:
+            y_hat_feats += res
+
+        y_hat = ME.SparseTensor(features=y_hat_feats, 
+                                coordinates=points, 
+                                tensor_stride=8, 
+                                device=points.device)
+
+        return y_hat
+
+
+class FactorizedPriorScaled(CompressionModel):
+    """
+    Factorized Prior Entropy Bottleneck
+
+    Uses a factorized prior model for the latents
+    """
+    def __init__(self, config):
+        super().__init__()
+        self.C = config["C_in"]
+        self.C_bottleneck = config["C_bottleneck"]
+        self.num_bottlenecks = config["num_bottlenecks"]
+
+        self.entropy_bottlenecks = []
+        self.extracts = []
+        self.expands = []
+
+        for i in range(self.num_bottlenecks):
+            # Entropy Bottleneck
+            entropy_bottleneck = EntropyBottleneck(self.C_bottleneck)
+            self.entropy_bottlenecks.append( entropy_bottleneck )
+            self.add_module(f'entropy_bottleneck_{i}', entropy_bottleneck)
+
+            # Extract layers
+            if i >= 1:
+                extract = nn.Sequential(
+                    ME.MinkowskiConvolution(self.C, self.C_bottleneck * 2, kernel_size=3, dimension=3),
+                    ME.MinkowskiReLU(inplace=False),
+                    ME.MinkowskiConvolution(self.C_bottleneck * 2, self.C_bottleneck * 2,  kernel_size=3, dimension=3, stride=2),
+                    ME.MinkowskiReLU(inplace=False),
+                    ME.MinkowskiConvolution(self.C_bottleneck * 2, self.C_bottleneck,  kernel_size=3, dimension=3)
+                )
+                self.extracts.append(extract)
+                self.add_module(f'extract_{i}',extract)
+                 
+
+            if i >= 1:
+                expand = nn.Sequential(
+                    ME.MinkowskiConvolution(self.C_bottleneck, self.C_bottleneck * 2, kernel_size=3, dimension=3),
+                    ME.MinkowskiReLU(inplace=False),
+                    ME.MinkowskiGenerativeConvolutionTranspose(self.C_bottleneck*2, self.C_bottleneck*2, kernel_size=3, dimension=3),
+                    ME.MinkowskiReLU(inplace=False),
+                    ME.MinkowskiConvolution(self.C_bottleneck * 2, self.C, kernel_size=3, dimension=3)
+                )
+                self.expands.append(expand)
+                self.add_module(f'expand_{i}',expand)
+
+        self.down_conv = ME.MinkowskiConvolution(in_channels=self.C_bottleneck, out_channels=1, kernel_size=3, stride=2, dimension=3)
+
+    
+    def forward(self, y):
+        # Entropy model
+        y_hats, y_likelihoods = [], []
+        residuals = []
+
+        y_base = ME.SparseTensor(coordinates=y.C, 
+                                 features=y.F.clone(), 
+                                 device=y.device, 
+                                 tensor_stride=8)
+        for i in range(self.num_bottlenecks):
+            # Extract residual
+            if i >= 1:
+                r_i = self.extracts[i-1](y_base)
+            else:
+                r_i = y_base 
+
+            # Entropy bottleneck
+            r_hat, likelihood = self.entropy_bottlenecks[i](r_i.F.t().unsqueeze(0))
+            r_hat = ME.SparseTensor(coordinates=r_i.C,
+                                    features=r_hat[0].t(),
+                                    device=y.device,
+                                    tensor_stride=8)
+
+            # Expand
+            if i >= 1:
+                r_i_hat = self.expands[i-1](r_hat)
+            else:
+                r_i_hat = r_hat 
+
+            # Sum over residuals
+            y_hat = r_i_hat.features_at_coordinates(y.C.float())
+            with torch.no_grad():
+                for residual in residuals:
+                    y_hat += residual.features_at_coordinates(y.C.float())
+                        
+            # Append to y_hats
+            y_hat = ME.SparseTensor(coordinates=y.C,
+                                    features=y_hat.clone(),
+                                    device=y.device,
+                                    tensor_stride=8)
+            y_hats.append(y_hat)
+
+            y_likelihoods.append(likelihood) # Try for likelihood once
+
+            # Rounded residual 
+            with torch.no_grad():
+                r_round, likelihoods_round = self.entropy_bottlenecks[i](r_i.F.t().unsqueeze(0), training=False)
+                r_round = ME.SparseTensor(coordinates=r_i.C,
+                                          features=r_round[0].t(),
+                                          tensor_stride=8)
+                if i >= 1:
+                    r_i_round = self.expands[i-1](r_round)
+                else:
+                    r_i_round = r_round
+
+                residuals.append(r_i_round)
+
+                # Subtract from y_base
+                y_base = ME.SparseTensor(coordinates=y_base.C,
+                                        features=y_base.F - r_i_round.features_at_coordinates(y_base.C.float()),
+                                        tensor_stride=8,
+                                        device=y_base.device)
+
+        return y_hats, y_likelihoods
+
+    def compress(self, y):
+        """
+        Compression of a latent space
+        
+        Parameters
+        ----------
+        y: MinkowskiEngine.SparseTensor
+            Sparse Tensor containing the latent features
+
+        returns
+        ----------
+        strings: list
+            List of strings representing the compressed bitstream
+        shape: np.array
+            Shape of the compressed latent features
+        """
+        shapes = []
+        y_strings = []
+        y = utils.sort_tensor(y)
+        y_base = ME.SparseTensor(coordinates=y.C.clone(), 
+                                 features=y.F.clone(), 
+                                 device=y.device, 
+                                 tensor_stride=8)
+        #ys = torch.split(y.F, int(self.C / self.num_bottlenecks), dim=1)
+        for i in range(self.num_bottlenecks):
+            """
+            y_base = ME.SparseTensor(coordinates=y.C.clone(), 
+                                 features=ys[i], 
+                                 device=y.device, 
+                                 tensor_stride=8)
+            """
+            # Extract residual
+            if i >= 1:
+                r_i = self.extracts[i-1](y_base)
+            else:
+                r_i = y_base 
+
+            # Shape
+            shape = [r_i.F.shape[0]]
+            shapes.append(shape)
+
+            # Entropy bottleneck compress
+            r_i = utils.sort_tensor(r_i)
+            y_string = self.entropy_bottlenecks[i].compress(r_i.F.t().unsqueeze(0))
+            y_strings.append(y_string)
+            
+            # Entropy bottleneck decompress
+            r_hat = self.entropy_bottlenecks[i].decompress(y_string, shape)
+            
+            # Expand
+            if i >= 1:
+                r_hat = ME.SparseTensor(coordinates=r_i.C,
+                                    features=r_hat[0].t(),
+                                    tensor_stride=16,
+                                    device=r_hat.device)
+                r_i_hat = self.expands[i-1](r_hat)
+            else:
+                r_i_hat = ME.SparseTensor(coordinates=r_i.C,
+                                    features=r_hat[0].t(),
+                                    tensor_stride=8,
+                                    device=r_hat.device)
+
+            # Rounded residual 
+            y_base = ME.SparseTensor(coordinates=y_base.C,
+                                     features=y_base.F - r_i_hat.features_at_coordinates(y_base.C.float()),
+                                     tensor_stride=8,
+                                     device=y_base.device)
+            # Render a pc
+            import open3d as o3d
+            import numpy as np
+            coordinates = y_base.C.cpu().numpy()
+            features = y_base.F.cpu().numpy()
+            for i in range(8):
+                point_cloud = o3d.geometry.PointCloud()
+                point_cloud.points = o3d.utility.Vector3dVector(coordinates[:, 1:] / 8)
+                color_value = features[:, i:i+1]
+                color_value = (color_value - np.min(color_value)) / (np.max(color_value) - np.min(color_value))
+                point_cloud.colors = o3d.utility.Vector3dVector(np.concatenate([color_value, color_value, color_value], axis=1))
+                utils.render_pointcloud(point_cloud, "temp/image_{}_{}.png".format(i, "{}"))
+
+        strings = [y_strings]
+        return strings, shapes
+
+    def decompress(self, points, points2, strings, shapes):
+        """
+        Decompression routine, the length of strings determines the quality of decompression
+
+        Parameters
+        ----------
+        points: torch.tensor, Nx4
+            Tensor of points for the latent features with indices B,x,y,z
+        strings: list
+            List of strings representing the bitstream
+        shapes: list
+            List of shapes, containing the dimension of the compressed features
+        
+        returns
+        -------
+        y_hat: MinkowskiEngine.sparseTensor
+            Sparse Tensor of the decompressed representation
+        
+        """
+        assert isinstance(strings, list) and len(strings) == 1
+        points = utils.sort_points(points)
+        points2 = utils.sort_points(points2)
+        # Get the points back
+        y_strings = strings[0]
+
+        residuals = []
+        for i in range(len(y_strings)):
+            # Decompress Strings
+            r_hat = self.entropy_bottlenecks[i].decompress(y_strings[i], shapes[i])
+
+            # Expand
+            if i >= 1:
+                r_hat = ME.SparseTensor(features=r_hat[0].t(),
+                                    coordinates=points2,
+                                    tensor_stride=16,
+                                    device=points.device)
+                r_hat = self.expands[i-1](r_hat)
+            else:
+                r_hat = ME.SparseTensor(features=r_hat[0].t(),
+                                    coordinates=points,
+                                    tensor_stride=8,
+                                    device=points.device)
+
+            residuals.append(r_hat.features_at_coordinates(points.float()).clone())
 
         y_hat_feats = residuals[-1]
         for res in residuals[:-1]:
@@ -328,9 +612,10 @@ class MeanScaleHyperpriorScales(CompressionModel):
     def __init__(self, config):
         super().__init__()
 
+        self.C_in = config["C_in"]
         self.C_bottleneck = config["C_bottleneck"]
-        self.C_hyper_bottleneck = config["C_hyper_bottleneck"]
-        self.num_entropy_bottlenecks = config["num_bottleneckutils.[[s"]
+        self.C_hyper_bottleneck = config["C_bottleneck"]
+        self.num_entropy_bottlenecks = config["num_bottlenecks"]
 
         (
             self.entropy_bottlenecks,
@@ -373,10 +658,10 @@ class MeanScaleHyperpriorScales(CompressionModel):
         for i in range(self.num_entropy_bottlenecks):
             entropy_bottleneck = EntropyBottleneck(self.C_hyper_bottleneck)
             gaussian_conditional = GaussianConditional(None)
-            h_a = self._build_h_a(self.C_bottleneck, self.C_hyper_bottleneck)
+            h_a = self._build_h_a(self.C_bottleneck, self.C_bottleneck)
             h_s = self._build_h_s(self.C_hyper_bottleneck)
-            expands = self._build_expands(in_channels=self.C_bottleneck, out_channels=self.C_hyper_bottleneck)
-            extracts = self._build_extracts(in_channels=self.C_hyper_bottleneck, out_channels=self.C_bottleneck)
+            expands = self._build_expands(in_channels=self.C_bottleneck, out_channels=self.C_in)
+            extracts = self._build_extracts(in_channels=self.C_in, out_channels=self.C_bottleneck)
 
             entropy_bottlenecks.append(entropy_bottleneck)
             gaussian_conditionals.append(gaussian_conditional)
@@ -389,9 +674,9 @@ class MeanScaleHyperpriorScales(CompressionModel):
 
     def _build_expands(self, in_channels, out_channels):
         expand_layers = [
-            ME.MinkowskiConvolution(out_channels, out_channels, kernel_size=1, dimension=3),
+            ME.MinkowskiConvolution(in_channels, in_channels, kernel_size=1, dimension=3),
             ME.MinkowskiReLU(inplace=False),
-            ME.MinkowskiConvolution(in_channels=in_channels, out_channels=out_channels, kernel_size=3, dimension=3),
+            ME.MinkowskiConvolution(in_channels=in_channels, out_channels=in_channels, kernel_size=3, dimension=3),
             ME.MinkowskiReLU(inplace=False),
             ME.MinkowskiConvolution(in_channels=in_channels, out_channels=out_channels, kernel_size=3, dimension=3)
         ]
@@ -401,9 +686,9 @@ class MeanScaleHyperpriorScales(CompressionModel):
         extract_layers = [
             ME.MinkowskiConvolution(in_channels=in_channels, out_channels=out_channels, kernel_size=3, dimension=3),
             ME.MinkowskiReLU(inplace=False),
-            ME.MinkowskiConvolution(in_channels=in_channels, out_channels=out_channels, kernel_size=3, dimension=3),
+            ME.MinkowskiConvolution(in_channels=in_channels, out_channels=in_channels, kernel_size=3, dimension=3),
             ME.MinkowskiReLU(inplace=False),
-            ME.MinkowskiConvolution(out_channels, out_channels, kernel_size=1, dimension=3)
+            ME.MinkowskiConvolution(in_channels, out_channels, kernel_size=1, dimension=3)
         ]
         return nn.Sequential(*extract_layers)
 
@@ -437,7 +722,6 @@ class MeanScaleHyperpriorScales(CompressionModel):
         y_hats = []
         y_res_list = []
         y_base = ME.SparseTensor( coordinates=y.C, features=y.F.clone(), device=y.device, tensor_stride=8)
-        #y_chunks = y.F.chunk(self.num_entropy_bottlenecks, dim=1)
         for i in range(self.num_entropy_bottlenecks):
             # Extract features from y
             y_extract = self.extracts_list[i](y_base)
@@ -502,7 +786,6 @@ class MeanScaleHyperpriorScales(CompressionModel):
                 y_res_list.append(y_res_round)
             
             y_base = ME.SparseTensor(features=y_base.F.clone() - y_res_round.features_at_coordinates(y_base.C.float()).detach(), coordinates=y_base.C, tensor_stride=8, device=y.device)
-            #print(torch.mean(torch.abs(y.F - y_base.F)))
 
         return y_hats, (y_likelihoods, z_likelihoods)
 
@@ -555,8 +838,6 @@ class MeanScaleHyperpriorScales(CompressionModel):
             means_hat, scales_hat = gaussian_params_feats.chunk(2, dim=1)
             scales_hat = scales_hat.t().unsqueeze(0)
             means_hat = means_hat.t().unsqueeze(0)
-            print("Scales")
-            print(means_hat)
         
             # Gaussian Conditional
             indexes = self.gaussian_conditionals[i].build_indexes(scales_hat)
@@ -580,7 +861,7 @@ class MeanScaleHyperpriorScales(CompressionModel):
         # Pack it
         points = [y_points, z_points]
         strings = [y_strings, z_strings]
-        return points, strings, shapes
+        return strings, shapes
 
 
     def decompress(self, points, strings, shapes):
@@ -608,7 +889,6 @@ class MeanScaleHyperpriorScales(CompressionModel):
             means_hat, scales_hat = gaussian_params_feats.chunk(2, dim=1)
             scales_hat = scales_hat.t().unsqueeze(0)
             means_hat = means_hat.t().unsqueeze(0)
-            print(means_hat)
 
             indexes = self.gaussian_conditionals[i].build_indexes(scales_hat)
             y_hat_feats = self.gaussian_conditionals[i].decompress(y_strings[i], indexes, means=means_hat)

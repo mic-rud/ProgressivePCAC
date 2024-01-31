@@ -101,9 +101,9 @@ class StackedBPPLoss():
 
             cur_likelihoods.append(likelihood)
             cur_likelihood = torch.cat(cur_likelihoods, dim=-1)
-            #bits = torch.log(cur_likelihood).sum() / (- math.log(2) * num_points)
 
-            bits = torch.log(likelihood).sum() / (- math.log(2) * num_points)
+            #bits = torch.log(likelihood).sum() / (- math.log(2) * num_points)
+            bits = torch.log(cur_likelihood).sum() / (- math.log(2) * num_points)
             loss += bits
 
         return loss.mean() * self.weight

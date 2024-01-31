@@ -116,16 +116,23 @@ class Training():
             # Training
             self.train_epoch(epoch)
 
-            if (epoch%5 == 0):
+            if ((epoch)%10 == 0):
+                continue
                 self.val_epoch(epoch)
 
             self.model_scheduler.step()
             self.model.update()
 
-            #self.save_checkpoint(epoch)
+        # Save model after training
+        path = os.path.join(self.results_directory,
+                            "weights.pt")
+        self.save_checkpoint(path)
 
     def train_epoch(self, epoch):
         self.model.train()
+
+        loss_avg = utils.AverageMeter()
+        aux_loss_avg = utils.AverageMeter()
 
         pbar = tqdm(self.train_loader, bar_format=TQDM_BAR_FORMAT_TRAIN)
         pbar.set_description("[{}: {}/{}]".format(self.config["experiment_name"], 
@@ -147,6 +154,7 @@ class Training():
 
             # Backward for model
             loss_value, loss_dict = self.loss(input, output)
+            loss_avg.update(loss_value.item())
             loss_value.backward()
 
             torch.cuda.empty_cache() # Needed?
@@ -158,14 +166,15 @@ class Training():
             
             # Backward for bottleneck
             aux_loss = self.model.aux_loss()
+            aux_loss_avg.update(aux_loss.item())
             aux_loss.backward()
 
             self.bottleneck_optimizer.step()
 
             # Logging
             pbar_dict = {}
-            pbar_dict["Loss"] = "{:.2e}".format(loss_value.item())
-            pbar_dict["Aux_Loss"] = "{:.2e}".format(aux_loss.item())
+            pbar_dict["Loss"] = "{:.2e}".format(loss_avg.avg)
+            pbar_dict["Aux_Loss"] = "{:.2e}".format(aux_loss_avg.avg)
             #for key, value in loss_dict.items():
                 #pbar_dict[key] = "{:.2e}".format(self.log.get_avg([self.finished_epochs, "training", key]))
             pbar.set_postfix(pbar_dict)
@@ -193,9 +202,11 @@ class Training():
 
                 # Decompress all rates
                 y_strings = []
+                z_strings = []
                 for i in range(len(strings[0])):
                     y_strings.append(strings[0][i])
-                    current_strings = [y_strings]
+                    z_strings.append(strings[1][i])
+                    current_strings = [y_strings, z_strings]
 
                     # Run decompression
                     reconstruction = self.model.decompress(coordinates=coordinates, 
@@ -203,7 +214,7 @@ class Training():
                                                            shape=shapes)
                     
                     # Compute bpp
-                    bpp = utils.count_bits(y_strings) / N
+                    bpp = utils.count_bits(current_strings) / N
                     print(bpp)
 
                     # Rebuild point clouds
@@ -212,8 +223,8 @@ class Training():
 
                     # Compute metrics
                     metric = PointCloudMetric(source_pc, rec_pc)
-                    results = metric.compute_pointcloud_metrics(drop_duplicates=True)
-                    print(results)
+                    results, _ = metric.compute_pointcloud_metrics(drop_duplicates=True)
+                    print(results["sym_y_psnr"])
 
                     # Renders
                     path = os.path.join(self.results_directory, 
@@ -221,6 +232,17 @@ class Training():
                                         "{}_{}_{}_{}.png".format(str(epoch), sequence, str(i), "{}"))
                     utils.render_pointcloud(rec_pc, path)
 
+    def save_checkpoint(self, path):
+        """
+        Save a checkpoint of the model
+        
+        Parameters
+        ----------
+        epoch: int
+            Current epoch
+        """
+        self.model.update()
+        torch.save(self.model.state_dict(), path)
 
 def parse_options():
     """
@@ -228,7 +250,7 @@ def parse_options():
     """
     parser = argparse.ArgumentParser()
     # Training options
-    parser.add_argument("--config", type=str, default="./configs/Test_config.yaml", help="Configuration for training")
+    parser.add_argument("--config", type=str, default="./configs/MeanScale_5_lambda200-3200.yaml", help="Configuration for training")
     #Parse into option class
     args = parser.parse_args()
     return args

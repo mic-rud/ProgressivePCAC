@@ -14,7 +14,13 @@ class ColorModel(CompressionModel):
         self.g_a = AnalysisTransform(config["g_a"])
         self.g_s = SparseSynthesisTransform(config["g_s"])
 
-        self.entropy_model = FactorizedPrior(config["entropy_model"])
+        if config["entropy_model"]["type"] == "FactorizedPrior":
+            self.entropy_model = FactorizedPrior(config["entropy_model"])
+        elif config["entropy_model"]["type"] == "MeanScaleHyperprior":
+            self.entropy_model = MeanScaleHyperpriorScales(config["entropy_model"])
+        else:
+            self.entropy_model = FactorizedPriorScaled(config["entropy_model"])
+
 
 
 
@@ -159,15 +165,20 @@ class ColorModel(CompressionModel):
         latent_coordinates = self.g_s.down_conv(coordinates)
         latent_coordinates = self.g_s.down_conv(latent_coordinates)
         latent_coordinates = self.g_s.down_conv(latent_coordinates)
+        latent_coordinates_2 = ME.SparseTensor(coordinates=latent_coordinates.C.clone(), features=latent_coordinates.F.clone(), tensor_stride=8, device=coordinates.device)
+        latent_coordinates_2 = self.g_s.down_conv(latent_coordinates_2)
+        latent_coordinates_2 = self.g_s.down_conv(latent_coordinates_2)
+        points = [latent_coordinates.C, latent_coordinates_2.C]
 
         # Entropy Decoding
-        y_hat = self.entropy_model.decompress(latent_coordinates.C, strings, shape)
+        y_hat = self.entropy_model.decompress(points, strings, shape)
 
         # Synthesis transform
         x_hat = self.g_s(y_hat, coords=coordinates)
 
         # Rebuild reconstruction to torch tensor
-        x_hat = torch.concat([x_hat.C[:, 1:4], x_hat.F], dim=1)
+        features = torch.clamp(torch.round(x_hat.F * 255), 0.0, 255.0) / 255
+        x_hat = torch.concat([x_hat.C[:, 1:4], features], dim=1)
         return x_hat
         
 

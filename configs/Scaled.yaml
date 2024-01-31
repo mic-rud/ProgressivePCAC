@@ -1,14 +1,14 @@
 ## General
-experiment_name: "01_19_NotSummed"
+experiment_name: "Scaled_test_5"
 results_path : "./results"
 
 # Model
 model:
   entropy_model: 
-    type: "MeanScaleHyperpriorScales" 
+    type: "FactorizedPriorScaled" 
     C_in: 128
-    C_bottleneck: 32
-    num_bottlenecks: 4
+    C_bottleneck: 128
+    num_bottlenecks: 5
   g_a: 
     C_in: 3
     N1: 64
@@ -38,14 +38,14 @@ transforms:
       block_size: 128
 
 ## Training
-device: "3"
+device: "2"
 epochs: 100
 batch_size: 8
 virtual_batches: false
 model_learning_rate: 0.0001
 bottleneck_learning_rate: 0.01
 optimizer: "Adam"
-scheduler_step_size: 15
+scheduler_step_size: 30
 scheduler_gamma: 0.5
 clip_grad_norm: 1.0
 
@@ -59,7 +59,6 @@ loss:
       - 800
       - 1600
       - 3200
-      - 6400
     loss: "L2"
   bpp-y:
     type: "StackedBPPLoss"

@@ -3,6 +3,26 @@ import open3d as o3d
 import torch
 import MinkowskiEngine as ME 
 
+class AverageMeter(object):
+    """
+    Computes and stores the average and current value
+    Copied from: https://github.com/pytorch/examples/blob/master/imagenet/main.py
+    """
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
 
 def count_bits(strings):
     """
@@ -51,7 +71,7 @@ def get_o3d_pointcloud(pc):
     return o3d_pc
 
 
-def render_pointcloud(pc, path):
+def render_pointcloud(pc, path, point_size=1.0):
     """
     Render the point cloud from 6 views along x,y,z axis
 
@@ -81,7 +101,7 @@ def render_pointcloud(pc, path):
     vis.add_geometry(pc)
     # Adjust the point size
     render_options = vis.get_render_option()
-    render_options.point_size = 1.5  # adjust the size as required
+    render_options.point_size = 1.5  * point_size # adjust the size as required
 
     for key, view in settings.items():
         # Get view control
