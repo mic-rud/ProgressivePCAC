@@ -1,42 +1,14 @@
-import torch
-import MinkowskiEngine as ME
-import utils
-# Define a sparse tensor with coordinates and features
-coordinates = torch.tensor([
-    [0, 0, 0, 0],
-    [0, 1, 1, 1],
-    [0, 2, 2, 2],
-    [0, 3, 3, 3],
-    [0, 4, 4, 4],
-    [0, 8, 8, 8],
-    [1, 1, 15, 10],
-], dtype=torch.int32)
+import numpy as np
+import matplotlib.pyplot as plt
 
 
-sparse_tensor = ME.SparseTensor(features=coordinates.float(), coordinates=coordinates)
+quantized = np.load("temp/quantized_features.npy")[0]
+unquantized = np.load("temp/unquantized_features.npy")[0]
 
-# Define a sparse convolution layer
-in_channels = 4
-out_channels = 4
-kernel_size = 3
-stride = 2
+variances = np.var(quantized, axis=1)
+sorted_indices = np.argsort(variances)
+quantized_all = quantized[sorted_indices]
+unquantized_all = unquantized[sorted_indices]
 
-convolution = ME.MinkowskiConvolution(
-    in_channels=in_channels,
-    out_channels=out_channels,
-    kernel_size=kernel_size,
-    stride=stride,
-    dimension=3
-)
-
-# Perform the convolution
-output = convolution(sparse_tensor)
-print(output)
-output = convolution(output)
-
-# Print the result
-print(output)
-
-
-coordinates = utils.downsampled_coordinates(sparse_tensor.C, factor=4)
-print(coordinates)
+# Load
+for i in range(128):

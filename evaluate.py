@@ -3,7 +3,10 @@ import time
 import yaml
 
 import torch
+import open3d as o3d
 import pandas as pd
+import numpy as np
+import copy
 from torch.utils.data import DataLoader
 
 import utils
@@ -11,17 +14,24 @@ from model.model import ColorModel
 from data.dataloader import StaticDataset
 from metrics.metric import PointCloudMetric
 
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+
+norm = Normalize(vmin=0.0, vmax=10**(-2))
 # Paths
 base_path = "./results"
 data_path = "./data/datasets/full_128" 
 
 experiments = [
-    #"MeanScale_4_lambda800-6400",
-    "MeanScale_5_lambda200-6400_200epochs",
-    "MeanScale_1_lambda300",
-    "MeanScale_1_lambda600",
-    "MeanScale_1_lambda800",
-    "MeanScale_1_lambda1200",
+    #"MeanScale_5_lambda200-6400_200epochs",
+    "MeanScale_1_lambda100_v2",
+    #"MeanScale_1_lambda100",
+    #"MeanScale_1_lambda200",
+    #"MeanScale_1_lambda400",
+    #"MeanScale_1_lambda800",
+    #"MeanScale_1_lambda1600",
+    #"MeanScale_1_lambda3200",
 ]
 
 def run_testset(experiments):
@@ -67,7 +77,10 @@ def run_testset(experiments):
                 # Compression
                 torch.cuda.synchronize()
                 t0 = time.time()
+
                 strings, shapes = model.compress(source)
+                #strings, shapes = model.compress(source, latent_path="temp")
+
                 torch.cuda.synchronize()
                 t_compress = time.time() - t0
 
@@ -105,18 +118,71 @@ def run_testset(experiments):
                     results["t_decompress"] = t_decompress
                     experiment_results.append(results)
 
-                    # Renders
+                    # Renders of the pointcloud
+                    point_size = 1.0 if data["cubes"][0]["sequence"][0] in ["longdress", "soldier", "loot", "longdress"] else 2.0
                     path = os.path.join(base_path,
                                         experiment, 
                                         "renders_test", 
                                         "{}_{}_{}.png".format(sequence, str(i), "{}"))
-                    utils.render_pointcloud(rec_pc, path)
+                    utils.render_pointcloud(rec_pc, path, point_size=point_size)
+
+                    # Renders of the color-errors
+                    path = os.path.join(base_path,
+                                        experiment, 
+                                        "renders_test", 
+                                        "error_y_{}_{}_{}.png".format(sequence, str(i), "{}"))
+                    # Y error
+                    error_point_cloud = copy.deepcopy(rec_pc)
+                    error_vectors = error_vectors["colorAB"]
+                    colors_error = ScalarMappable(norm=norm, cmap="magma").to_rgba(error_vectors)
+                    error_point_cloud.colors = o3d.utility.Vector3dVector(colors_error[:, 0, :3])
+                    utils.render_pointcloud(error_point_cloud, path, point_size=point_size)
+
+
+                    fig, ax = plt.subplots(figsize=(2, 4), layout='constrained')
+                    cbar = fig.colorbar(ScalarMappable(norm=norm, cmap="magma"),
+                            cax=ax, orientation='vertical', label='MSE')
+                    for t in cbar.ax.get_yticklabels():
+                        t.set_fontsize(18)
+                    cbar.ax.set_ylabel("MSE", fontsize=18)
+
+                    fig.savefig(os.path.join(base_path, experiment, "renders_test", "error_bar.png"), bbox_inches="tight")
+                    exit(0)
+                    """
+                    # Calculate the median x-coordinate
+                    median_x = np.median(np.asarray(error_point_cloud.points)[:, 0])
+
+                    # Split error_point_cloud
+                    error_points = np.asarray(error_point_cloud.points)
+                    left_error_indices = np.where(error_points[:, 0] <= median_x)[1]
+                    right_error_indices = np.where(error_points[:, 0] > median_x)[1]
+
+                    left_error_cloud = error_point_cloud.select_by_index(left_error_indices)
+                    right_error_cloud = error_point_cloud.select_by_index(right_error_indices)
+
+                    # Split rec_pc
+                    rec_pc_points = np.asarray(rec_pc.points)
+                    left_rec_pc_indices = np.where(rec_pc_points[:, 0] <= median_x)[0]
+                    right_rec_pc_indices = np.where(rec_pc_points[:, 0] > median_x)[0]
+
+                    left_rec_pc = rec_pc.select_by_index(left_rec_pc_indices)
+                    right_rec_pc = rec_pc.select_by_index(right_rec_pc_indices)
+
+                    split_cloud = o3d.geometry.PointCloud()
+                    split_cloud.points = o3d.utility.Vector3dVector(np.concatenate([left_error_cloud.points, right_rec_pc.points], axis=0))
+                    split_cloud.colors = o3d.utility.Vector3dVector(np.concatenate([left_error_cloud.colors, right_rec_pc.colors], axis=0))
+                    path = os.path.join(base_path,
+                                        experiment, 
+                                        "renders_test", 
+                                        "split_y_{}_{}_{}.png".format(sequence, str(i), "{}"))
+                    utils.render_pointcloud(split_cloud, path)
 
                     # Ply
                     path = os.path.join(base_path,
                                         experiment, 
                                         "plys", 
                                         "{}_{:04d}_rec{}.ply".format(sequence, results["frameIdx"], str(i)))
+                    """
 
         # Save the results as .csv
         df = pd.DataFrame(experiment_results)

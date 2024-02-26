@@ -72,7 +72,7 @@ class ColorModel(CompressionModel):
 
         return output
 
-    def compress(self, x, path=None):
+    def compress(self, x, path=None, latent_path=None):
         """
         Compress a point cloud
         
@@ -106,7 +106,7 @@ class ColorModel(CompressionModel):
         y = self.g_a(input)
         
         # Entropy Coding
-        strings, shape = self.entropy_model.compress(y)
+        strings, shape = self.entropy_model.compress(y, latent_path=latent_path)
 
         # Save the bitstream of return data
         if path:

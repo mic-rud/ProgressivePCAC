@@ -95,6 +95,9 @@ class StackedBPPLoss():
         loss = 0.0
         likelihoods = pred["likelihoods"][self.key]
         cur_likelihoods = []
+
+        likelihoods = torch.cat(likelihoods, dim=-1)
+
         for likelihood in likelihoods:
             if isinstance(likelihood, list):
                 likelihood = torch.cat(likelihood, dim=-1)
@@ -149,6 +152,7 @@ class StackedColorLoss():
 
             # ColorLoss
             color_loss = self.loss_func(gt_colors, pred_colors) 
+            print(color_loss)
             loss += self.weights[i] * color_loss
 
         return loss

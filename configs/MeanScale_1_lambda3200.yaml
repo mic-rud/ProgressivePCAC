@@ -1,5 +1,5 @@
 ## General
-experiment_name: "MeanScale_1_lambda1600"
+experiment_name: "MeanScale_1_lambda3200"
 results_path : "./results"
 
 # Model
@@ -54,7 +54,7 @@ loss:
   ColorLoss:
     type: "StackedColorLoss"
     weight:
-      - 1600
+      - 3200
     loss: "L2"
   bpp-y:
     type: "StackedBPPLoss"
