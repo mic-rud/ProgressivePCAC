@@ -1,4 +1,7 @@
-# Scalable Coding
+# Progresive Coding for Deep Learning based Point Cloud Attribute Compression
+
+This is the accompanying repository for the [https://dl.acm.org/doi/10.1145/3652212.3652217](MMVE'24 paper).
+
 
 
 ## Setup
