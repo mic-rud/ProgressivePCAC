@@ -24,7 +24,7 @@ base_path = "./results"
 data_path = "./data/datasets/full_128" 
 
 experiments = [
-    "MeanScale_5_lambda200-6400_200epochs",
+    "MeanScale_5_lambda400-6400",
     "MeanScale_1_lambda100",
     "MeanScale_1_lambda200",
     "MeanScale_1_lambda400",
@@ -34,7 +34,7 @@ experiments = [
 
 def run_testset(experiments):
     # Device
-    device = torch.device(0)
+    device = torch.device(3)
     torch.cuda.set_device(device)
 
     torch.no_grad()
@@ -145,7 +145,6 @@ def run_testset(experiments):
                     cbar.ax.set_ylabel("MSE", fontsize=18)
 
                     fig.savefig(os.path.join(base_path, experiment, "renders_test", "error_bar.png"), bbox_inches="tight")
-                    exit(0)
 
         # Save the results as .csv
         df = pd.DataFrame(experiment_results)

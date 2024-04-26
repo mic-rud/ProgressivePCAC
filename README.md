@@ -37,4 +37,21 @@
     #DTD dataset for projecting textures
     cd datasets
     mkdir dtd && cd dtd
+    cd ../../..
 ```
+
+## Rerun evaluation
+```
+    python evaluate.py
+```
+
+## Re-Train models
+Sample configurations for training a model can be found in [./configs](./configs). 
+For re-training our model, use
+```
+    python train.py --config=configs/MeanScale_5_lambda400-6400.yaml
+```
+
+Configurations for the comparison against a reimplemented version of [https://ieeexplore.ieee.org/document/9874468/citations?tabFilter=papers#citations](SparsePCAC) have the indicator "_1_"
+
+

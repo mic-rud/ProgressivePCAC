@@ -32,8 +32,6 @@ colors = [
 colors = {
     "Fixed-Rate" : "#003366",
     "Progressive (Ours)" : "#e31b23", #RPTH palette
-    #"G-PCC": "#FFC325"
-    #"G-PCC": "#005cab",
     "G-PCC (tmc13)": "#8c9ea3",
 }
 
@@ -51,8 +49,7 @@ data_points = {
                                "MeanScale_1_lambda800", 
                                "MeanScale_1_lambda1600"],
     "G-PCC (tmc13)" : "G-PCC",
-    "Progressive (Ours)" : "MeanScale_5_lambda200-6400_200epochs",
-    #"Progressive - Rate (Ours)" : "MeanScale_5_lambda200-3200_rateOnce",
+    "Progressive (Ours)" : "MeanScale_5_lambda400-6400",
 }
 
 cumsum = {
@@ -68,6 +65,7 @@ BD_reference = "Fixed-Rate"
 data_frames = {}
 BD_results = []
 
+"""
 for key, data_point in data_points.items():
     data = pd.DataFrame()
     if isinstance(data_point, list):
@@ -86,7 +84,6 @@ for key, data_point in data_points.items():
 
     data_frames[key] = data
 
-"""
 for sequence in sequences:
     fig, ax = plt.subplots(1,1, figsize=(4, 3))
     for key, data_frame in data_frames.items():
