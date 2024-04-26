@@ -7,6 +7,7 @@
 *.avi
 *.txt
 *.csv
+*.pt
 
 .env
 .vscode
