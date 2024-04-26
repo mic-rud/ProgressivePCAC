@@ -19,5 +19,3 @@ metrics/*
 
 !requirements.txt
 
-results/*
-!results/.gitkeep

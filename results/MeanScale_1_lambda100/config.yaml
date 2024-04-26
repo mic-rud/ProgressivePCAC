@@ -1,0 +1,57 @@
+batch_size: 8
+bottleneck_learning_rate: 0.01
+clip_grad_norm: 1.0
+data_path: ./data/datasets/full_128
+device: '3'
+epochs: 200
+experiment_name: MeanScale_1_lambda100
+loss:
+  ColorLoss:
+    loss: L2
+    type: StackedColorLoss
+    weight:
+    - 100
+  bpp-y:
+    key: y
+    type: StackedBPPLoss
+    weight: 1.0
+  bpp-z:
+    key: z
+    type: StackedBPPLoss
+    weight: 1.0
+min_points_test: 0
+min_points_train: 100
+model:
+  entropy_model:
+    C_bottleneck: 128
+    C_in: 128
+    num_bottlenecks: 1
+    type: MeanScaleHyperprior
+  g_a:
+    C_in: 3
+    N1: 64
+    N2: 128
+    N3: 128
+  g_s:
+    C_out: 3
+    N1: 64
+    N2: 128
+    N3: 128
+model_learning_rate: 0.0001
+optimizer: Adam
+results_path: ./results
+scheduler_gamma: 0.5
+scheduler_step_size: 30
+transforms:
+  train:
+    1_Rotate:
+      block_size: 128
+      key: RandomRotate
+    2_Project:
+      block_size: 128
+      dataset_dir: ./data/datasets
+      key: ProjectTexture
+    3_Rotate:
+      block_size: 128
+      key: RandomRotate
+virtual_batches: false
