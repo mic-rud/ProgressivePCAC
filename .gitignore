@@ -1,13 +1,12 @@
 *.ply
 *.jpeg
 *.jpg
-*.png
+.png
 *.ply
 *.zip
 *.avi
 *.txt
 *.csv
-*.pt
 
 .env
 .vscode

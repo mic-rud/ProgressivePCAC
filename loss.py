@@ -152,7 +152,6 @@ class StackedColorLoss():
 
             # ColorLoss
             color_loss = self.loss_func(gt_colors, pred_colors) 
-            print(color_loss)
             loss += self.weights[i] * color_loss
 
         return loss

@@ -38,7 +38,7 @@ transforms:
       block_size: 128
 
 ## Training
-device: "2"
+device: "0"
 epochs: 200
 batch_size: 8
 virtual_batches: false
