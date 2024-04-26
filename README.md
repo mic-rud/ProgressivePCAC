@@ -25,7 +25,7 @@ This is the accompanying repository for the [https://dl.acm.org/doi/10.1145/3652
     cmake -DENABLE_HEADLESS_RENDERING=ON \
                     -DBUILD_GUI=OFF \
                     -DBUILD_WEBRTC=OFF \
-                    -DUSE_SYSTEM_GLEW=OFF \
+␛                    -DUSE_SYSTEM_GLEW=OFF \
                     -DUSE_SYSTEM_GLFW=OFF \
                     ..
     make -j$(nproc)
@@ -56,5 +56,6 @@ For re-training our model, use
 ```
 
 Configurations for the comparison against a reimplemented version of [https://ieeexplore.ieee.org/document/9874468/citations?tabFilter=papers#citations](SparsePCAC) have the indicator "_1_"
+
 
 
