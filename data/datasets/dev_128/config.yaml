@@ -1,0 +1,21 @@
+info:
+  cube_size: 128
+train:
+  BlueBackpack:
+    "0:249:100"
+  BlueSquat:
+    "0:249:100"
+val:
+  Gymnast: 
+    "0"
+  BlueSpin:
+    "0"
+test:
+  loot: 
+    "1200"
+  longdress: 
+    "1300"
+  soldier:
+    "690"
+  redandblack:
+    "1550"
